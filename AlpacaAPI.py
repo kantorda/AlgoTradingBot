@@ -31,11 +31,15 @@ trading_client = TradingClient(API_PUBLIC_KEY, API_PRIVATE_KEY, paper=True)
 historical_data_client = StockHistoricalDataClient(API_PUBLIC_KEY, API_PRIVATE_KEY)
 
 
+def get_account():
+    return trading_client.get_account()
+
+
 def get_tradeable_assets():
-    request = GetAssetsRequest(
-        AssetStatus=AssetStatus.ACTIVE,
-        AssetClass=AssetClass.US_EQUITY
-    )
+    # request = GetAssetsRequest(
+    #    AssetStatus=AssetStatus.ACTIVE,
+    #    AssetClass=AssetClass.US_EQUITY
+    # )
     assets = trading_client.get_all_assets()
     tradeable_assets = list(filter(lambda asset: asset.tradable and asset.asset_class == AssetClass.US_EQUITY, assets))
 
@@ -80,13 +84,30 @@ def sell_shares(symbol, qty):
     )
 
     # issue order request
-    print("Selling " + str(qty) + " shares of " + symbol)
+    print("Selling/Shorting " + str(qty) + " shares of " + symbol)
+    market_order = trading_client.submit_order(order_data=order_data)
+
+
+def sell_dollars(symbol, amt):
+    # prepare order
+    order_data = MarketOrderRequest(
+                symbol=symbol,
+                notional=amt,
+                side=OrderSide.SELL,
+                time_in_force=TimeInForce.DAY
+                )
+
+    # issue order request
+    print("Selling/Shorting " + str(amt) + " dollars of " + symbol)
     market_order = trading_client.submit_order(order_data=order_data)
 
 
 def close_position(symbol):
     print("Closing entire position in " + symbol)
-    order = trading_client.close_position(symbol_or_asset_id=symbol)
+    try:
+        order = trading_client.close_position(symbol_or_asset_id=symbol)
+    except:
+        print("Failed to close position in " + symbol)
 
 
 def get_positions():
@@ -96,6 +117,10 @@ def get_positions():
     #    print(str(position.qty) + " shares of " + position.symbol)
 
     return open_positions
+
+
+def get_position(symbol):
+    return trading_client.get_open_position(symbol_or_asset_id=symbol)
 
 
 def get_bar_data(symbol, start_date):
@@ -108,7 +133,7 @@ def get_bar_data(symbol, start_date):
     bars = historical_data_client.get_stock_bars(request_params)
 
     # convert to dataframe
-    bars.df
+    # bars.df
     # print(bars["SPY"][1].close)
 
     return bars

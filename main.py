@@ -1,10 +1,10 @@
 ###
 # Algorithmic Trading Bot
 ###
-import alpaca.common.exceptions
 
 import AlpacaAPI
-import TradingAlgorithm
+from TradingAlgorithm import Action, calculate_action
+from alpaca.trading import PositionSide
 import math
 
 position_size_dollars = 5000
@@ -14,24 +14,62 @@ if __name__ == '__main__':
 
     count = 0
     for asset in tradeable_assets:
-        should_buy = TradingAlgorithm.should_buy(asset.symbol)
-        if should_buy:
+        action = calculate_action(asset.symbol)
+        # print("Asset is " + asset.symbol + " and action is " + action.name)
+        # TODO is it necessary to do this every time?
+        positions = AlpacaAPI.get_positions()
+        account = AlpacaAPI.get_account()
+
+        # if we have an open position for this asset, pull it out of the list
+        # otherwise position = None
+        if any(position.symbol == asset.symbol for position in positions):
+            # print("open position found for " + asset.symbol)
+            position = AlpacaAPI.get_position(asset.symbol)
+        else:
+            position = None
+            # print("no open positions found for " + asset.symbol)
+
+        # if we don't have a position yet all we can do is buy Long or Short
+        if position is None:
             # check for free buying power
             # TODO compare against buying power not cash
-            account = AlpacaAPI.trading_client.get_account()
-            if (5000 < float(account.cash)):
-                # if we can buy fractionable shares
-                # buy $position_share_dollars
-                if asset.fractionable:
-                    # TODO Dont buy if position already open
-                    AlpacaAPI.buy_dollars(asset.symbol, position_size_dollars)
-                # else calculate the maximum number of whole shares
-                # we can buy for $position_share_dollars
-                else:
+            if position_size_dollars < float(account.cash):
+                if action == Action.LONG:
+                    # if we can buy fractionable shares
+                    # buy $position_share_dollars
+                    if asset.fractionable:
+                        AlpacaAPI.buy_dollars(asset.symbol, position_size_dollars)
+                    # else calculate the maximum number of whole shares
+                    # we can buy for $position_share_dollars
+                    else:
+                        quote = AlpacaAPI.get_latest_quote(asset.symbol)
+                        if quote == 0:
+                            continue
+                        shares = math.floor(position_size_dollars / quote)
+                        AlpacaAPI.buy_shares(asset.symbol, shares)
+                elif action == Action.SHORT and asset.shortable:
+                    # API cannot short fractionable shares
+                    # so calculate the maximum number of whole shares
+                    # we can short for $position_share_dollars
                     quote = AlpacaAPI.get_latest_quote(asset.symbol)
+                    if quote == 0:
+                        continue
                     shares = math.floor(position_size_dollars / quote)
-                    AlpacaAPI.buy_shares(asset.symbol, shares)
-        # if we don't want to buy, then we don't want to hold TODO make a hold vs sell algorithm
-        # so close any open position we have open of symbol
-        elif any(position.symbol == asset.symbol for position in AlpacaAPI.get_positions()):
+                    AlpacaAPI.sell_shares(asset.symbol, shares)
+                # else:
+                #    print("decided not to open new position in " + asset.symbol)
+            # else:
+            #    print("not enough buying power to open position in " + asset.symbol)
+        # else we do have a position, and we can hold it or close it
+        # algorithm calls for close
+        elif action == Action.CLOSE:
             AlpacaAPI.close_position(asset.symbol)
+        # algorithm calls for a position of the opposite side so close the current position
+        # do not purchase the opposite side at this time
+        elif position.side == PositionSide.LONG and action.value > 2:
+            AlpacaAPI.close_position(asset.symbol)
+        elif position.side == PositionSide.SHORT and action.value < 4:
+            AlpacaAPI.close_position(asset.symbol)
+        # else we hold the position
+        else:
+            print("Holding position in " + asset.symbol)

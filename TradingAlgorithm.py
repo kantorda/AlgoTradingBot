@@ -4,10 +4,19 @@
 
 import AlpacaAPI
 from datetime import date, datetime, timedelta
+from enum import Enum
 import numpy as np
 
-days = 7
+business_days = 7
 percent_variance = 0.2
+
+
+class Action(Enum):
+    LONG = 1
+    HOLD_LONG = 2
+    CLOSE = 3
+    HOLD_SHORT = 4
+    SHORT = 5
 
 
 def get_start_date(days):
@@ -30,7 +39,6 @@ def get_start_date(days):
 
 def calculate_sma(bars, symbol):
     sum = 0
-
     for day in bars[symbol]:
         sum = sum + day.close
 
@@ -39,20 +47,27 @@ def calculate_sma(bars, symbol):
     return sma
 
 
-def should_buy(symbol):
+def calculate_action(symbol):
     try:
-        start_date = get_start_date(days)
+        # calculate SMA and get latest quote
+        start_date = get_start_date(business_days)
         bars = AlpacaAPI.get_bar_data(symbol, start_date)
-
-        sma = calculate_sma(bars, symbol)
         latest_quote = AlpacaAPI.get_latest_quote(symbol)
 
-        if latest_quote <= sma:
-            return False
+        sma = calculate_sma(bars, symbol)
+
+        # Compare SMA and latest quote for action
+        if latest_quote < sma:
+            if latest_quote <= sma * (1 - percent_variance):
+                return Action.SHORT
+            return Action.HOLD_SHORT
 
         if sma * (1 + percent_variance) <= latest_quote:
-            return True
+            return Action.LONG
 
-        return False
+        if sma <= latest_quote:
+            return Action.HOLD_LONG
+
+        return Action.CLOSE
     except:
-        return False
+        return Action.CLOSE
